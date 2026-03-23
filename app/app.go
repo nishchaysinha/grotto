@@ -49,10 +49,7 @@ type Model struct {
 	terminalRatio float64
 
 	// Drag state
-	dragging    DragTarget
-	dragStartX  int
-	dragStartY  int
-	dragStartSz int
+	dragging DragTarget
 
 	sidebar  ui.Model
 	panes    editor.PaneManager

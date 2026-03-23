@@ -1,10 +1,10 @@
 #!/bin/sh
 # Grotto installer script
-# Usage: curl -sSL https://raw.githubusercontent.com/owomeister/grotto/main/install.sh | sh
+# Usage: curl -sSL https://raw.githubusercontent.com/nishchaysinha/grotto/main/install.sh | sh
 
 set -e
 
-REPO="owomeister/grotto"
+REPO="nishchaysinha/grotto"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="grotto"
 

@@ -507,9 +507,10 @@ func (b *Buffer) MatchBracket() (int, int) {
 			c = 0
 		}
 		cur := b.Lines[l][c]
-		if cur == ch {
+		switch cur {
+		case ch:
 			depth++
-		} else if cur == match {
+		case match:
 			depth--
 			if depth == 0 {
 				return l, c

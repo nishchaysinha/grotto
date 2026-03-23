@@ -237,7 +237,7 @@ func loadGitignore(root string) []string {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var patterns []string
 	sc := bufio.NewScanner(f)

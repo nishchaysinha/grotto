@@ -56,7 +56,7 @@ changelog:
 
 release:
   github:
-    owner: owomeister
+    owner: nishchaysinha
     name: grotto
   prerelease: auto
   draft: false
@@ -65,11 +65,11 @@ release:
 brews:
   - name: grotto
     repository:
-      owner: owomeister
+      owner: nishchaysinha
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/owomeister/grotto"
+    homepage: "https://github.com/nishchaysinha/grotto"
     description: "A modern terminal-based code editor"
     license: "GPL-3.0"
     install: |
