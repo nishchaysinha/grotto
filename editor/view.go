@@ -207,9 +207,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			return m, nil
 		case "ctrl+w":
-			if t.buf.Dirty {
-				// TODO: unsaved prompt
-			}
+			// TODO: add unsaved prompt when t.buf.Dirty is true
 			if !m.CloseTab(m.active) {
 				return m, func() tea.Msg { return CloseTabMsg{} }
 			}
@@ -365,7 +363,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 
 	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
+		switch msg.Button {
+		case tea.MouseLeft:
 			// Check if click is on tab bar
 			if len(m.tabs) > 1 {
 				ry := msg.Y - m.offsetY
@@ -414,7 +413,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					}
 				}
 			}
-		} else if msg.Button == tea.MouseMiddle {
+		case tea.MouseMiddle:
 			// Middle-click close tab
 			ry := msg.Y - m.offsetY
 			if ry == 0 && len(m.tabs) > 1 {

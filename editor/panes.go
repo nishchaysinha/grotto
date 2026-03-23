@@ -169,9 +169,8 @@ func (pm *PaneManager) ClosePane() {
 	case 1:
 		pm.layout = LayoutSingle
 	case 2:
-		if pm.layout == LayoutGrid {
-			pm.layout = LayoutColumns
-		} else if pm.layout == LayoutLeftRight2 {
+		switch pm.layout {
+		case LayoutGrid, LayoutLeftRight2:
 			pm.layout = LayoutColumns
 		}
 	case 3:

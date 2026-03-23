@@ -253,9 +253,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		t := m.tabs[m.active]
 		maxScroll := len(t.history)
-		if msg.Button == tea.MouseWheelUp {
+		switch msg.Button {
+		case tea.MouseWheelUp:
 			m.scrollY = min(m.scrollY+3, maxScroll)
-		} else if msg.Button == tea.MouseWheelDown {
+		case tea.MouseWheelDown:
 			m.scrollY = max(m.scrollY-3, 0)
 		}
 		return m, nil
