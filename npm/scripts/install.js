@@ -6,7 +6,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 const os = require("os");
 
-const REPO = "owomeister/grotto";
+const REPO = "nishchaysinha/grotto";
 const BIN_DIR = path.join(__dirname, "..", "bin");
 
 function getPlatform() {

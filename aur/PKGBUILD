@@ -1,16 +1,16 @@
-# Maintainer: owomeister <owner@grotto.dev>
+# Maintainer: nishchaysinha <owner@grotto.dev>
 pkgname=grotto-bin
 pkgver=0.0.0
 pkgrel=1
 pkgdesc="A modern terminal-based code editor"
 arch=('x86_64' 'aarch64')
-url="https://github.com/owomeister/grotto"
+url="https://github.com/nishchaysinha/grotto"
 license=('GPL-3.0-only')
 provides=('grotto')
 conflicts=('grotto')
 
-source_x86_64=("${pkgname}-${pkgver}-x86_64.tar.gz::https://github.com/owomeister/grotto/releases/download/v${pkgver}/grotto-${pkgver}-linux-amd64.tar.gz")
-source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::https://github.com/owomeister/grotto/releases/download/v${pkgver}/grotto-${pkgver}-linux-arm64.tar.gz")
+source_x86_64=("${pkgname}-${pkgver}-x86_64.tar.gz::https://github.com/nishchaysinha/grotto/releases/download/v${pkgver}/grotto-${pkgver}-linux-amd64.tar.gz")
+source_aarch64=("${pkgname}-${pkgver}-aarch64.tar.gz::https://github.com/nishchaysinha/grotto/releases/download/v${pkgver}/grotto-${pkgver}-linux-arm64.tar.gz")
 
 sha256sums_x86_64=('PLACEHOLDER_SHA256')
 sha256sums_aarch64=('PLACEHOLDER_SHA256')

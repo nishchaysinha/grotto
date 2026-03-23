@@ -9,16 +9,16 @@
     "code-editor",
     "tui"
   ],
-  "homepage": "https://github.com/owomeister/grotto",
+  "homepage": "https://github.com/nishchaysinha/grotto",
   "bugs": {
-    "url": "https://github.com/owomeister/grotto/issues"
+    "url": "https://github.com/nishchaysinha/grotto/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/owomeister/grotto.git"
+    "url": "git+https://github.com/nishchaysinha/grotto.git"
   },
   "license": "GPL-3.0",
-  "author": "owomeister",
+  "author": "nishchaysinha",
   "bin": {
     "grotto": "bin/grotto"
   },
