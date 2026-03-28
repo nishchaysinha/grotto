@@ -1,0 +1,49 @@
+# Grotto configuration — copy to ~/.config/grotto/config.toml to customize.
+# All color values are hex strings. Missing keys fall back to the built-in defaults.
+
+[theme]
+
+# ── App chrome ──────────────────────────────────────────────────────────────
+title_bg      = "#7D56F4"   # title bar background
+title_fg      = "#FAFAFA"   # title bar text
+btn_bg        = "#5A3EC8"   # inactive button background
+btn_fg        = "#FAFAFA"   # inactive button text
+btn_active_bg = "#FAFAFA"   # active button background
+btn_active_fg = "#5A3EC8"   # active button text
+status_bg     = "#3C3C3C"   # status bar background
+status_fg     = "#AAAAAA"   # status bar text
+border_dim    = "#555555"   # unfocused pane border
+border_active = "#7D56F4"   # focused pane border
+
+# ── Editor ──────────────────────────────────────────────────────────────────
+gutter_fg     = "#555555"   # line numbers and gutter separator
+cur_line_bg   = "#2A2A2A"   # current line highlight
+tab_bar_bg    = "#21222C"   # tab bar background
+tab_fg        = "#888888"   # inactive tab text
+tab_active_fg = "#FFFFFF"   # active tab text
+tab_active_bg = "#44475a"   # active tab background
+selection_bg  = "#44475a"   # text selection background
+bracket_hl_bg = "#44475a"   # bracket match highlight background
+
+# ── Search overlay ──────────────────────────────────────────────────────────
+search_overlay_bg      = "#282A36"   # search bar background
+search_overlay_fg      = "#F8F8F2"   # search bar text
+search_input_bg        = "#44475A"   # input field background
+search_input_fg        = "#F8F8F2"   # input field text
+search_match_bg        = "#FFB86C"   # inactive match highlight background
+search_match_fg        = "#282A36"   # inactive match highlight text
+search_active_match_bg = "#FF79C6"   # active match highlight background
+search_active_match_fg = "#282A36"   # active match highlight text
+search_label_fg        = "#6272A4"   # label text (Find:, Replace:, etc.)
+
+# ── Sidebar ──────────────────────────────────────────────────────────────────
+sidebar_selected_bg = "#7D56F4"   # selected item background
+sidebar_selected_fg = "#FAFAFA"   # selected item text
+sidebar_dir_icon    = "#89DDFF"   # directory chevron color (▾ / ▸)
+
+# ── Git status ───────────────────────────────────────────────────────────────
+git_added     = "#50FA7B"   # new / staged files and added lines
+git_modified  = "#E5C07B"   # modified files and changed lines
+git_deleted   = "#E06C75"   # deleted files and deletion markers
+git_renamed   = "#61AFEF"   # renamed files
+git_untracked = "#A9DC76"   # untracked files
