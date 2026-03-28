@@ -302,7 +302,8 @@ func (m Model) View() string {
 
 	var out strings.Builder
 
-	// Tab bar
+	// Tab bar (build into temp buffer, then truncate to width)
+	var tabBar strings.Builder
 	if len(m.tabs) > 1 {
 		tabDim := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
 		tabAct := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true).Underline(true)
@@ -312,16 +313,16 @@ func (m Model) View() string {
 			if i == m.active {
 				s = tabAct
 			}
-			out.WriteString(zone.Mark(fmt.Sprintf("%s-tab-%d", m.prefix, i), s.Render(" "+t.name+" ")))
-			out.WriteString(zone.Mark(fmt.Sprintf("%s-close-%d", m.prefix, i), closeStyle.Render("✕ ")))
+			tabBar.WriteString(zone.Mark(fmt.Sprintf("%s-tab-%d", m.prefix, i), s.Render(" "+t.name+" ")))
+			tabBar.WriteString(zone.Mark(fmt.Sprintf("%s-close-%d", m.prefix, i), closeStyle.Render("✕ ")))
 		}
-		out.WriteString(zone.Mark(fmt.Sprintf("%s-new", m.prefix), lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Render(" [+] ")))
-		out.WriteByte('\n')
+		tabBar.WriteString(zone.Mark(fmt.Sprintf("%s-new", m.prefix), lipgloss.NewStyle().Foreground(lipgloss.Color("#7D56F4")).Render(" [+] ")))
 	} else {
 		closeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#CC0000"))
-		out.WriteString(zone.Mark(fmt.Sprintf("%s-close-0", m.prefix), closeStyle.Render(" ✕ close ")))
-		out.WriteByte('\n')
+		tabBar.WriteString(zone.Mark(fmt.Sprintf("%s-close-0", m.prefix), closeStyle.Render(" ✕ close ")))
 	}
+	out.WriteString(tabBar.String())
+	out.WriteByte('\n')
 
 	t := m.tabs[m.active]
 	if t.state == nil {
@@ -348,33 +349,46 @@ func (m Model) View() string {
 			}
 			hi := histStart + i
 			if i < histLines && hi < hLen {
-				// History line (no color — just text)
+				// History line — raw ANSI, single render
 				sl := &t.history[hi]
-				dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#888888"))
+				var histLine strings.Builder
 				for x := range m.width {
 					if x < len(sl.chars) {
-						out.WriteString(dimStyle.Render(string(sl.chars[x])))
+						histLine.WriteRune(sl.chars[x])
 					} else {
-						out.WriteByte(' ')
+						histLine.WriteByte(' ')
 					}
 				}
+				out.WriteString("\x1b[38;5;245m" + histLine.String() + "\x1b[0m")
 			} else {
-				// Live screen line
+				// Live screen line — raw ANSI, batch same-color runs
 				ly := i - histLines
 				if ly >= 0 && liveLines > 0 {
+					var run strings.Builder
+					var runFG, runBG vt10x.Color
+					runStart := true
 					for x := range m.width {
 						ch, fg, bg := t.state.Cell(x, ly)
 						if ch == 0 {
 							ch = ' '
 						}
-						style := lipgloss.NewStyle()
-						if c := vtColor(fg); c != nil {
-							style = style.Foreground(c)
+						if runStart || fg != runFG || bg != runBG {
+							if run.Len() > 0 {
+								out.WriteString(vtANSI(runFG, runBG, false))
+								out.WriteString(run.String())
+								out.WriteString("\x1b[0m")
+								run.Reset()
+							}
+							runFG = fg
+							runBG = bg
+							runStart = false
 						}
-						if c := vtColor(bg); c != nil {
-							style = style.Background(c)
-						}
-						out.WriteString(style.Render(string(ch)))
+						run.WriteRune(ch)
+					}
+					if run.Len() > 0 {
+						out.WriteString(vtANSI(runFG, runBG, false))
+						out.WriteString(run.String())
+						out.WriteString("\x1b[0m")
 					}
 				}
 			}
@@ -385,12 +399,12 @@ func (m Model) View() string {
 		s := out.String()
 		lines := strings.Split(s, "\n")
 		if len(lines) > 0 {
-			lines[len(lines)-1] = indStyle.Render(ind) + strings.Repeat(" ", max(m.width-len(ind), 0))
+			lines[len(lines)-1] = indStyle.Render(ind) + strings.Repeat(" ", max(m.width-lipgloss.Width(ind), 0))
 		}
 		return strings.Join(lines, "\n")
 	}
 
-	// Live view
+	// Live view — raw ANSI for performance (no lipgloss in hot path)
 	cx, cy := t.state.Cursor()
 	curVis := t.state.CursorVisible()
 
@@ -398,23 +412,42 @@ func (m Model) View() string {
 		if y > 0 {
 			out.WriteByte('\n')
 		}
+		var run strings.Builder
+		var runFG, runBG vt10x.Color
+		runStart := true
+
+		flushRun := func() {
+			if run.Len() == 0 {
+				return
+			}
+			out.WriteString(vtANSI(runFG, runBG, false))
+			out.WriteString(run.String())
+			out.WriteString("\x1b[0m")
+			run.Reset()
+		}
+
 		for x := range m.width {
 			ch, fg, bg := t.state.Cell(x, y)
 			if ch == 0 {
 				ch = ' '
 			}
-			style := lipgloss.NewStyle()
-			if c := vtColor(fg); c != nil {
-				style = style.Foreground(c)
-			}
-			if c := vtColor(bg); c != nil {
-				style = style.Background(c)
-			}
 			if curVis && m.focused && x == cx && y == cy {
-				style = style.Reverse(true)
+				flushRun()
+				out.WriteString(vtANSI(fg, bg, true))
+				out.WriteRune(ch)
+				out.WriteString("\x1b[0m")
+				runStart = true
+				continue
 			}
-			out.WriteString(style.Render(string(ch)))
+			if runStart || fg != runFG || bg != runBG {
+				flushRun()
+				runFG = fg
+				runBG = bg
+				runStart = false
+			}
+			run.WriteRune(ch)
 		}
+		flushRun()
 	}
 	return out.String()
 }
@@ -442,6 +475,32 @@ var ansiPalette = [16]string{
 	"#3465A4", "#75507B", "#06989A", "#D3D7CF",
 	"#555753", "#EF2929", "#8AE234", "#FCE94F",
 	"#729FCF", "#AD7FA8", "#34E2E2", "#EEEEEC",
+}
+
+// vtANSI builds a raw ANSI escape prefix from vt10x colors (no lipgloss).
+func vtANSI(fg, bg vt10x.Color, reverse bool) string {
+	var parts []string
+	if reverse {
+		parts = append(parts, "7")
+	}
+	if fg != vt10x.DefaultFG && fg != vt10x.DefaultBG {
+		if fg.ANSI() {
+			parts = append(parts, fmt.Sprintf("38;5;%d", fg))
+		} else if fg < 256 {
+			parts = append(parts, fmt.Sprintf("38;5;%d", fg))
+		}
+	}
+	if bg != vt10x.DefaultFG && bg != vt10x.DefaultBG {
+		if bg.ANSI() {
+			parts = append(parts, fmt.Sprintf("48;5;%d", bg))
+		} else if bg < 256 {
+			parts = append(parts, fmt.Sprintf("48;5;%d", bg))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\x1b[" + strings.Join(parts, ";") + "m"
 }
 
 func vtColor(c vt10x.Color) color.Color {

@@ -5,6 +5,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/owomeister/grotto/gitstatus"
 )
 
 // SplitDir is the direction of a split.
@@ -347,6 +349,24 @@ func (pm PaneManager) renderPane(i int, r rect) string {
 
 // PaneCount returns the number of panes.
 func (pm PaneManager) PaneCount() int { return len(pm.panes) }
+
+// RefreshAllDiffs updates git line-change markers for the active tab in every pane.
+func (pm *PaneManager) RefreshAllDiffs(gitRoot string) {
+	for i := range pm.panes {
+		pm.panes[i].RefreshDiff(gitRoot)
+	}
+}
+
+// UpdateLineDiff applies pre-computed diff results to every tab showing the given path.
+func (pm *PaneManager) UpdateLineDiff(path string, changes map[int]gitstatus.LineChange) {
+	for i := range pm.panes {
+		for j := range pm.panes[i].tabs {
+			if pm.panes[i].tabs[j].buf.FilePath == path {
+				pm.panes[i].tabs[j].lineChanges = changes
+			}
+		}
+	}
+}
 
 // HasSearchActive returns true if the active pane has a search overlay open.
 func (pm PaneManager) HasSearchActive() bool {

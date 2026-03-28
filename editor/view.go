@@ -4,21 +4,31 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	zone "github.com/lrstanley/bubblezone/v2"
+
+	"github.com/owomeister/grotto/gitstatus"
 )
+
+// FileSavedMsg is emitted after a successful save, carrying the saved file path.
+type FileSavedMsg struct{ Path string }
+
+// BufferChangedMsg is emitted when the buffer content is modified.
+type BufferChangedMsg struct{ Path string }
 
 // CloseTabMsg is emitted when the last tab in a pane is closed.
 type CloseTabMsg struct{}
 
 // Tab represents a single open file tab with its own buffer and view state.
 type Tab struct {
-	buf     *Buffer
-	hl      *Highlighter
-	scrollY int
-	scrollX int
+	buf         *Buffer
+	hl          *Highlighter
+	scrollY     int
+	scrollX     int
+	lineChanges map[int]gitstatus.LineChange
 }
 
 // Model is the editor view component managing multiple tabs.
@@ -51,6 +61,22 @@ var (
 	tabStyle       = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#888888"))
 	tabActiveStyle = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#44475a"))
 	tabBarBg       = lipgloss.NewStyle().Background(lipgloss.Color("#21222C"))
+
+	gitBarAdded    = lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379"))
+	gitBarModified = lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B"))
+	gitBarDeleted  = lipgloss.NewStyle().Foreground(lipgloss.Color("#E06C75"))
+	gutterSep      = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+
+	// Pre-computed raw ANSI prefixes for hot render path
+	ansiGutter     = BuildANSIPrefix("#555555", "", false, false, false)
+	ansiGutterSep  = BuildANSIPrefix("#555555", "", false, false, false)
+	ansiCurLine    = BuildANSIPrefix("", "#2A2A2A", false, false, false)
+	ansiCursor     = "\x1b[7m" // reverse
+	ansiBracketHL  = BuildANSIPrefix("", "#44475a", true, false, false)
+	ansiSelectionBg = BuildANSIPrefix("", "#44475a", false, false, false)
+	ansiGitAdded   = BuildANSIPrefix("#98C379", "", false, false, false)
+	ansiGitMod     = BuildANSIPrefix("#E5C07B", "", false, false, false)
+	ansiGitDel     = BuildANSIPrefix("#E06C75", "", false, false, false)
 )
 
 func copyToClipboard(text string) tea.Cmd { return clipCopy(text) }
@@ -169,6 +195,15 @@ func (m *Model) updateGutter() {
 	}
 }
 
+// RefreshDiff updates the active tab's line-level git diff markers.
+func (m *Model) RefreshDiff(gitRoot string) {
+	t := m.activeTab()
+	if t == nil || t.buf.FilePath == "" {
+		return
+	}
+	t.lineChanges = gitstatus.GetLineDiff(gitRoot, t.buf.FilePath)
+}
+
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -216,6 +251,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 		buf := t.buf
 		hl := t.hl
+		prevEditVersion := buf.EditVersion
 
 		// Shift+arrow selection
 		isShift := false
@@ -246,7 +282,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				if ks == "backspace" || ks == "delete" {
 					m.ensureVisible()
 					m.updateGutter()
-					return m, nil
+					return m, func() tea.Msg { return BufferChangedMsg{Path: buf.FilePath} }
 				}
 			default:
 				if msg.Key().Text != "" {
@@ -294,7 +330,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "shift+tab":
 			m.indentSelection(-1)
 		case "ctrl+s":
-			_ = buf.Save()
+			if err := buf.Save(); err == nil {
+				return m, func() tea.Msg { return FileSavedMsg{Path: buf.FilePath} }
+			}
+			return m, nil
 		case "ctrl+z":
 			buf.Undo()
 		case "ctrl+y":
@@ -309,7 +348,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if buf.Selection.Active {
 				text := buf.SelectedText()
 				buf.DeleteSelection()
-				return m, copyToClipboard(text)
+				return m, tea.Batch(copyToClipboard(text), func() tea.Msg { return BufferChangedMsg{Path: buf.FilePath} })
 			}
 		case "ctrl+v":
 			return m, clipPaste()
@@ -346,6 +385,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			hl.InvalidateLine(buf.Cursor.Line + 1)
 		}
+		if buf.EditVersion != prevEditVersion && buf.FilePath != "" {
+			return m, func() tea.Msg { return BufferChangedMsg{Path: buf.FilePath} }
+		}
 
 	case tea.ClipboardMsg:
 		if t == nil {
@@ -360,6 +402,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			t.buf.clampCursor()
 			m.ensureVisible()
 			m.updateGutter()
+			return m, func() tea.Msg { return BufferChangedMsg{Path: t.buf.FilePath} }
 		}
 
 	case tea.MouseClickMsg:
@@ -544,10 +587,21 @@ func (m Model) View() string {
 	}
 	t := m.activeTab()
 	if t == nil {
-		pad := strings.Repeat("\n", m.height/2)
-		msg := "No file open"
-		center := strings.Repeat(" ", max((m.width-len(msg))/2, 0)) + msg
-		return pad + noFileStyle.Render(center)
+		var out strings.Builder
+		for i := range m.height {
+			if i > 0 {
+				out.WriteByte('\n')
+			}
+			if i == m.height/2 {
+				msg := "No file open"
+				lpad := max((m.width-len(msg))/2, 0)
+				rpad := max(m.width-lpad-len(msg), 0)
+				out.WriteString(strings.Repeat(" ", lpad) + noFileStyle.Render(msg) + strings.Repeat(" ", rpad))
+			} else {
+				out.WriteString(strings.Repeat(" ", m.width))
+			}
+		}
+		return out.String()
 	}
 
 	var out strings.Builder
@@ -592,16 +646,39 @@ func (m Model) View() string {
 		matchesByLine[sm.Line] = append(matchesByLine[sm.Line], i)
 	}
 
+	// Pre-build per-char ANSI prefix map from syntax spans (avoids per-char lipgloss)
+	type charANSI struct {
+		ansi string
+	}
+
 	for i := range eh {
 		lineNum := t.scrollY + i
 		if lineNum >= buf.LineCount() {
-			gutter := gutterStyle.Render(strings.Repeat(" ", m.gutterW))
-			out.WriteString(gutter + "│\n")
+			out.WriteString(ansiGutter + strings.Repeat(" ", m.gutterW) + ansiReset)
+			out.WriteString(ansiGutterSep + "│" + ansiReset)
+			out.WriteString(strings.Repeat(" ", contentW))
+			if i < eh-1 {
+				out.WriteByte('\n')
+			}
 			continue
 		}
 
 		numStr := fmt.Sprintf("%*d ", m.gutterW-1, lineNum+1)
-		gutter := gutterStyle.Render(numStr)
+		out.WriteString(ansiGutter + numStr + ansiReset)
+
+		// Git gutter marker
+		sep := ansiGutterSep + "│" + ansiReset
+		if t.lineChanges != nil {
+			switch t.lineChanges[lineNum] {
+			case gitstatus.LineAdded:
+				sep = ansiGitAdded + "▌" + ansiReset
+			case gitstatus.LineModified:
+				sep = ansiGitMod + "▌" + ansiReset
+			case gitstatus.LineDeleted:
+				sep = ansiGitDel + "▾" + ansiReset
+			}
+		}
+		out.WriteString(sep)
 
 		rawLine := buf.Line(lineNum)
 		isCurLine := lineNum == buf.Cursor.Line
@@ -627,69 +704,115 @@ func (m Model) View() string {
 			}
 		}
 
-		// Syntax spans → per-char styles
+		// Get syntax spans
 		var spans []StyledSpan
 		if hl != nil {
 			spans = hl.Highlight(lineNum, rawLine)
 		}
-		charStyles := make([]lipgloss.Style, len(rawLine))
-		plain := lipgloss.NewStyle()
+
+		// Build per-byte ANSI prefix lookup
+		charANSIs := make([]string, len(rawLine))
 		idx := 0
 		for _, sp := range spans {
 			for range len(sp.Text) {
-				if idx < len(charStyles) {
-					charStyles[idx] = sp.Style
+				if idx < len(charANSIs) {
+					charANSIs[idx] = sp.ANSI
 				}
 				idx++
 			}
 		}
-		for ; idx < len(charStyles); idx++ {
-			charStyles[idx] = plain
-		}
 
-		// Render visible chars
-		var rendered strings.Builder
+		// Determine if this line has any overlays
+		hasOverlays := (selStart >= 0) ||
+			len(matchesByLine[lineNum]) > 0 ||
+			(lineNum == matchLine) ||
+			(m.focused && isCurLine)
+
 		vis := 0
-		for ci := t.scrollX; ci < len(rawLine) && vis < contentW; ci++ {
-			style := plain
-			if ci < len(charStyles) {
-				style = charStyles[ci]
-			}
-			if selStart >= 0 && ci >= selStart && ci < selEnd {
-				style = style.Background(lipgloss.Color("#44475a"))
-			}
-			// Search match highlights
-			for _, mi := range matchesByLine[lineNum] {
-				sm := searchMatches[mi]
-				if ci >= sm.Col && ci < sm.Col+sm.Len {
-					if mi == searchIdx {
-						style = activeMatchStyle
-					} else {
-						style = matchHLStyle
+		if !hasOverlays {
+			// Fast path: render entire spans using raw ANSI
+			bytePos := 0
+			for _, sp := range spans {
+				if vis >= contentW {
+					break
+				}
+				var chunk strings.Builder
+				for _, r := range sp.Text {
+					rLen := utf8.RuneLen(r)
+					if bytePos < t.scrollX {
+						bytePos += rLen
+						continue
 					}
+					if vis >= contentW {
+						break
+					}
+					chunk.WriteRune(r)
+					vis++
+					bytePos += rLen
+				}
+				if chunk.Len() > 0 {
+					out.WriteString(FastRender(chunk.String(), sp.ANSI))
 				}
 			}
-			if lineNum == matchLine && ci == matchCol {
-				style = bracketHLStyle
+		} else {
+			// Overlay path: per-char but using raw ANSI
+			ci := t.scrollX
+			for ci < len(rawLine) && vis < contentW {
+				r, size := utf8.DecodeRuneInString(rawLine[ci:])
+
+				// Determine ANSI prefix
+				baseANSI := ""
+				if ci < len(charANSIs) {
+					baseANSI = charANSIs[ci]
+				}
+
+				// Check overlays
+				isSel := selStart >= 0 && ci >= selStart && ci < selEnd
+				isBracket := lineNum == matchLine && ci == matchCol
+				isCursor := m.focused && isCurLine && ci == buf.Cursor.Col
+				searchHit := -1
+				for _, mi := range matchesByLine[lineNum] {
+					sm := searchMatches[mi]
+					if ci >= sm.Col && ci < sm.Col+sm.Len {
+						searchHit = mi
+					}
+				}
+
+				ch := string(r)
+				if isCursor {
+					out.WriteString(ansiCursor + ch + ansiReset)
+				} else if isBracket {
+					out.WriteString(ansiBracketHL + ch + ansiReset)
+				} else if searchHit >= 0 {
+					if searchHit == searchIdx {
+						out.WriteString(activeMatchStyle.Render(ch))
+					} else {
+						out.WriteString(matchHLStyle.Render(ch))
+					}
+				} else if isSel {
+					out.WriteString(ansiSelectionBg + ch + ansiReset)
+				} else {
+					out.WriteString(FastRender(ch, baseANSI))
+				}
+				vis++
+				ci += size
 			}
-			if m.focused && isCurLine && ci == buf.Cursor.Col {
-				style = style.Reverse(true)
-			}
-			rendered.WriteString(style.Render(string(rawLine[ci])))
-			vis++
 		}
 
 		if m.focused && isCurLine && buf.Cursor.Col >= len(rawLine) {
-			rendered.WriteString(cursorStyle.Render(" "))
+			out.WriteString(ansiCursor + " " + ansiReset)
 			vis++
 		}
 
-		line := rendered.String()
-		if isCurLine {
-			line += curLineStyle.Render(strings.Repeat(" ", max(contentW-vis, 0)))
+		pad := max(contentW-vis, 0)
+		if pad > 0 {
+			if isCurLine {
+				out.WriteString(ansiCurLine + strings.Repeat(" ", pad) + ansiReset)
+			} else {
+				out.WriteString(strings.Repeat(" ", pad))
+			}
 		}
 
-		out.WriteString(gutter + "│" + line)
 		if i < eh-1 {
 			out.WriteString("\n")
 		}
