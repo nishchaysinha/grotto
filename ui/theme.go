@@ -19,7 +19,4 @@ func ApplyTheme(t config.Theme) {
 	selectedStyle = lipgloss.NewStyle().
 		Background(c(t.SidebarSelectedBg)).
 		Foreground(c(t.SidebarSelectedFg))
-	if t.SidebarDirIcon != "" {
-		dirIconStyle = lipgloss.NewStyle().Foreground(c(t.SidebarDirIcon))
-	}
 }

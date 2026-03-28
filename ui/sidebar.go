@@ -2,7 +2,6 @@ package ui
 
 import (
 	"bufio"
-	"image/color"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,79 +23,8 @@ var (
 	selectedStyle     = lipgloss.NewStyle().
 				Background(lipgloss.Color("#7D56F4")).
 				Foreground(lipgloss.Color("#FAFAFA"))
-	dirIconStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#89DDFF"))
-	indentGuide   = lipgloss.NewStyle().Foreground(lipgloss.Color("#3E4452"))
-	fileIconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#6D8086"))
+	indentGuide = lipgloss.NewStyle().Foreground(lipgloss.Color("#3E4452"))
 )
-
-// fileIconColor returns a color for the given filename based on its extension.
-// All icons are single-width Unicode (1 cell) to avoid emoji width issues.
-func fileIconColor(name string) color.Color {
-	ext := strings.ToLower(filepath.Ext(name))
-	base := strings.ToLower(name)
-
-	switch base {
-	case "makefile", "justfile":
-		return lipgloss.Color("#6D8086")
-	case "dockerfile", "containerfile":
-		return lipgloss.Color("#2496ED")
-	case "license", "licence":
-		return lipgloss.Color("#D4AA00")
-	case "package.json":
-		return lipgloss.Color("#8BC34A")
-	case "go.mod", "go.sum":
-		return lipgloss.Color("#00ADD8")
-	}
-
-	switch ext {
-	case ".go":
-		return lipgloss.Color("#00ADD8")
-	case ".rs":
-		return lipgloss.Color("#DEA584")
-	case ".py":
-		return lipgloss.Color("#FFBC03")
-	case ".js", ".mjs", ".cjs", ".jsx":
-		return lipgloss.Color("#F1E05A")
-	case ".ts", ".mts", ".cts", ".tsx":
-		return lipgloss.Color("#3178C6")
-	case ".html", ".htm":
-		return lipgloss.Color("#E44D26")
-	case ".css", ".scss", ".sass":
-		return lipgloss.Color("#563D7C")
-	case ".json":
-		return lipgloss.Color("#CBCB41")
-	case ".yaml", ".yml":
-		return lipgloss.Color("#CB171E")
-	case ".toml":
-		return lipgloss.Color("#9C4221")
-	case ".xml":
-		return lipgloss.Color("#E37933")
-	case ".sh", ".bash", ".zsh", ".fish":
-		return lipgloss.Color("#89E051")
-	case ".md", ".mdx":
-		return lipgloss.Color("#42A5F5")
-	case ".c", ".h":
-		return lipgloss.Color("#599EFF")
-	case ".cpp", ".cc", ".cxx", ".hpp":
-		return lipgloss.Color("#F34B7D")
-	case ".java":
-		return lipgloss.Color("#CC3E44")
-	case ".kt", ".kts":
-		return lipgloss.Color("#7F52FF")
-	case ".rb":
-		return lipgloss.Color("#CC342D")
-	case ".swift":
-		return lipgloss.Color("#F05138")
-	case ".lua":
-		return lipgloss.Color("#51A0CF")
-	case ".sql":
-		return lipgloss.Color("#E38C00")
-	case ".lock":
-		return lipgloss.Color("#6D8086")
-	}
-
-	return lipgloss.Color("#6D8086")
-}
 
 // OpenFileMsg is emitted when a file is selected.
 type OpenFileMsg struct {

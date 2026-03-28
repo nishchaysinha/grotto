@@ -11,19 +11,21 @@ import (
 func ApplyTheme(t config.Theme) {
 	c := lipgloss.Color
 
-	// view.go styles
-	gutterStyle = lipgloss.NewStyle().Foreground(c(t.GutterFg))
-	curLineStyle = lipgloss.NewStyle().Background(c(t.CurLineBg))
+	// view.go styles (lipgloss — used in rendering)
 	noFileStyle = lipgloss.NewStyle().Foreground(c(t.GutterFg))
-	bracketHLStyle = lipgloss.NewStyle().Background(c(t.BracketHLBg)).Bold(true)
 	tabStyle = lipgloss.NewStyle().Padding(0, 1).Foreground(c(t.TabFg))
 	tabActiveStyle = lipgloss.NewStyle().Padding(0, 1).
 		Foreground(c(t.TabActiveFg)).Background(c(t.TabActiveBg))
 	tabBarBg = lipgloss.NewStyle().Background(c(t.TabBarBg))
-	gitBarAdded = lipgloss.NewStyle().Foreground(c(t.GitAdded))
-	gitBarModified = lipgloss.NewStyle().Foreground(c(t.GitModified))
-	gitBarDeleted = lipgloss.NewStyle().Foreground(c(t.GitDeleted))
-	gutterSep = lipgloss.NewStyle().Foreground(c(t.GutterFg))
+
+	// view.go ANSI prefixes (used in hot render path)
+	ansiGutter = BuildANSIPrefix(t.GutterFg, "", false, false, false)
+	ansiGutterSep = BuildANSIPrefix(t.GutterFg, "", false, false, false)
+	ansiCurLine = BuildANSIPrefix("", t.CurLineBg, false, false, false)
+	ansiBracketHL = BuildANSIPrefix("", t.BracketHLBg, true, false, false)
+	ansiGitAdded = BuildANSIPrefix(t.GitAdded, "", false, false, false)
+	ansiGitMod = BuildANSIPrefix(t.GitModified, "", false, false, false)
+	ansiGitDel = BuildANSIPrefix(t.GitDeleted, "", false, false, false)
 
 	// search.go styles
 	overlayStyle = lipgloss.NewStyle().

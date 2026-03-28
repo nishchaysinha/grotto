@@ -53,19 +53,10 @@ type Model struct {
 const tabBarH = 1
 
 var (
-	gutterStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-	curLineStyle   = lipgloss.NewStyle().Background(lipgloss.Color("#2A2A2A"))
-	cursorStyle    = lipgloss.NewStyle().Reverse(true)
 	noFileStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-	bracketHLStyle = lipgloss.NewStyle().Background(lipgloss.Color("#44475a")).Bold(true)
 	tabStyle       = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#888888"))
 	tabActiveStyle = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#FFFFFF")).Background(lipgloss.Color("#44475a"))
 	tabBarBg       = lipgloss.NewStyle().Background(lipgloss.Color("#21222C"))
-
-	gitBarAdded    = lipgloss.NewStyle().Foreground(lipgloss.Color("#98C379"))
-	gitBarModified = lipgloss.NewStyle().Foreground(lipgloss.Color("#E5C07B"))
-	gitBarDeleted  = lipgloss.NewStyle().Foreground(lipgloss.Color("#E06C75"))
-	gutterSep      = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 
 	// Pre-computed raw ANSI prefixes for hot render path
 	ansiGutter      = BuildANSIPrefix("#555555", "", false, false, false)
@@ -644,11 +635,6 @@ func (m Model) View() string {
 	matchesByLine := map[int][]int{} // line → index into searchMatches
 	for i, sm := range searchMatches {
 		matchesByLine[sm.Line] = append(matchesByLine[sm.Line], i)
-	}
-
-	// Pre-build per-char ANSI prefix map from syntax spans (avoids per-char lipgloss)
-	type charANSI struct {
-		ansi string
 	}
 
 	for i := range eh {

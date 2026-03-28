@@ -182,7 +182,7 @@ func startGitWatcher(gitRoot string) chan struct{} {
 	_ = watcher.Add(filepath.Join(gitRoot, ".git", "HEAD"))
 	_ = watcher.Add(filepath.Join(gitRoot, ".git", "index"))
 	go func() {
-		defer watcher.Close()
+		defer func() { _ = watcher.Close() }()
 		for {
 			select {
 			case _, ok := <-watcher.Events:
@@ -955,41 +955,6 @@ func (m Model) bdr(p FocusedPanel) lipgloss.Style {
 		return borderActive
 	}
 	return borderDim
-}
-
-// fastJoinHorizontal joins columns side-by-side without lipgloss ANSI parsing.
-// Each column is a newline-separated string. Lines are concatenated directly.
-func fastJoinHorizontal(cols []string) string {
-	if len(cols) == 0 {
-		return ""
-	}
-	if len(cols) == 1 {
-		return cols[0]
-	}
-
-	// Split each column into lines
-	colLines := make([][]string, len(cols))
-	maxRows := 0
-	for i, col := range cols {
-		colLines[i] = strings.Split(col, "\n")
-		if len(colLines[i]) > maxRows {
-			maxRows = len(colLines[i])
-		}
-	}
-
-	var out strings.Builder
-	for row := range maxRows {
-		if row > 0 {
-			out.WriteByte('\n')
-		}
-		for i, cl := range colLines {
-			_ = i
-			if row < len(cl) {
-				out.WriteString(cl[row])
-			}
-		}
-	}
-	return out.String()
 }
 
 func (m Model) commandNames() []string {

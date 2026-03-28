@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"fmt"
-	"image/color"
 	"io"
 	"os"
 	"os/exec"
@@ -470,13 +469,6 @@ func filterEnv(env []string, keys ...string) []string {
 	return out
 }
 
-var ansiPalette = [16]string{
-	"#000000", "#CC0000", "#4E9A06", "#C4A000",
-	"#3465A4", "#75507B", "#06989A", "#D3D7CF",
-	"#555753", "#EF2929", "#8AE234", "#FCE94F",
-	"#729FCF", "#AD7FA8", "#34E2E2", "#EEEEEC",
-}
-
 // vtANSI builds a raw ANSI escape prefix from vt10x colors (no lipgloss).
 func vtANSI(fg, bg vt10x.Color, reverse bool) string {
 	var parts []string
@@ -501,19 +493,6 @@ func vtANSI(fg, bg vt10x.Color, reverse bool) string {
 		return ""
 	}
 	return "\x1b[" + strings.Join(parts, ";") + "m"
-}
-
-func vtColor(c vt10x.Color) color.Color {
-	if c == vt10x.DefaultFG || c == vt10x.DefaultBG {
-		return nil
-	}
-	if c.ANSI() {
-		return lipgloss.Color(ansiPalette[c])
-	}
-	if c < 256 {
-		return lipgloss.Color(fmt.Sprintf("%d", c))
-	}
-	return nil
 }
 
 func keyToSeq(msg tea.KeyPressMsg) string {

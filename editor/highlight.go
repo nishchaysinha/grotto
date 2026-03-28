@@ -167,12 +167,12 @@ func BuildANSIPrefix(fg, bg string, bold, italic, reverse bool) string {
 	}
 	if fg != "" {
 		var r, g, b uint8
-		fmt.Sscanf(fg, "#%02x%02x%02x", &r, &g, &b)
+		_, _ = fmt.Sscanf(fg, "#%02x%02x%02x", &r, &g, &b)
 		parts = append(parts, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
 	}
 	if bg != "" {
 		var r, g, b uint8
-		fmt.Sscanf(bg, "#%02x%02x%02x", &r, &g, &b)
+		_, _ = fmt.Sscanf(bg, "#%02x%02x%02x", &r, &g, &b)
 		parts = append(parts, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
 	}
 	if len(parts) == 0 {
