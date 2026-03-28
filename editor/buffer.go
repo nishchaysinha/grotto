@@ -33,13 +33,14 @@ type Edit struct {
 }
 
 type Buffer struct {
-	Lines     []string
-	Cursor    Position
-	Selection Selection
-	FilePath  string
-	Dirty     bool
-	undoStack []Edit
-	redoStack []Edit
+	Lines       []string
+	Cursor      Position
+	Selection   Selection
+	FilePath    string
+	Dirty       bool
+	EditVersion int // incremented on every content-mutating operation
+	undoStack   []Edit
+	redoStack   []Edit
 }
 
 func NewBuffer(filePath string) (*Buffer, error) {
@@ -100,6 +101,7 @@ func (b *Buffer) Insert(pos Position, text string) {
 		b.Lines = newLines
 	}
 	b.Dirty = true
+	b.EditVersion++
 }
 
 // Delete removes text from start to end (start inclusive, end exclusive by character).
@@ -123,6 +125,7 @@ func (b *Buffer) Delete(start, end Position) {
 		b.Lines = append(b.Lines[:start.Line+1], b.Lines[end.Line+1:]...)
 	}
 	b.Dirty = true
+	b.EditVersion++
 }
 
 func (b *Buffer) InsertChar(ch rune) {
@@ -301,6 +304,7 @@ func (b *Buffer) Undo() {
 	}
 	b.redoStack = append(b.redoStack, edit)
 	b.Dirty = true
+	b.EditVersion++
 }
 
 func (b *Buffer) Redo() {
@@ -321,6 +325,7 @@ func (b *Buffer) Redo() {
 	}
 	b.undoStack = append(b.undoStack, edit)
 	b.Dirty = true
+	b.EditVersion++
 }
 
 func (b *Buffer) Save() error {

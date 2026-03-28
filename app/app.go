@@ -4,15 +4,34 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/fsnotify/fsnotify"
 	zone "github.com/lrstanley/bubblezone/v2"
 
+	"github.com/owomeister/grotto/config"
 	"github.com/owomeister/grotto/editor"
+	"github.com/owomeister/grotto/gitstatus"
 	"github.com/owomeister/grotto/terminal"
 	"github.com/owomeister/grotto/ui"
 )
+
+// diffDebounceMsg fires after the debounce delay for a pending diff request.
+type diffDebounceMsg struct {
+	seq  int
+	path string
+}
+
+// diffResultMsg carries async diff results back to the update loop.
+type diffResultMsg struct {
+	path    string
+	changes map[int]gitstatus.LineChange
+}
+
+// gitExternalChangeMsg fires when .git/HEAD or .git/index changes externally.
+type gitExternalChangeMsg struct{}
 
 type Config struct {
 	Path       string
@@ -34,10 +53,13 @@ const (
 type CloseTabMsg = editor.CloseTabMsg
 
 type Model struct {
-	cfg    Config
-	width  int
-	height int
-	focus  FocusedPanel
+	cfg        Config
+	gitRoot    string
+	diffSeq    int
+	gitWatchCh chan struct{}
+	width      int
+	height     int
+	focus      FocusedPanel
 
 	sidebarVisible  bool
 	terminalVisible bool
@@ -49,13 +71,20 @@ type Model struct {
 	terminalRatio float64
 
 	// Drag state
-	dragging DragTarget
+	dragging  DragTarget
+	hoverEdge DragTarget
 
 	sidebar  ui.Model
 	panes    editor.PaneManager
 	terminal terminal.Model
 	aiPanel  terminal.Model
 	overlay  Overlay
+
+	// View cache — skip re-rendering unchanged panels
+	cachedSidebar  string
+	cachedTerminal string
+	cachedAI       string
+	dirtyPanels    uint8 // bitmask: 1=sidebar 2=terminal 4=ai 8=all
 }
 
 type DragTarget int
@@ -72,66 +101,127 @@ const (
 	defaultAIPanelW      = 35
 	chromeH              = 2
 	defaultTerminalRatio = 0.3
-	minPanelW            = 12
+	minPanelW            = 20
 	minTermH             = 4
+
+	dirtySidebar  uint8 = 1
+	dirtyTerminal uint8 = 2
+	dirtyAI       uint8 = 4
+	dirtyAll      uint8 = 0xFF
 )
 
 var (
-	titleStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#7D56F4")).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Bold(true).
-			Padding(0, 1)
-
-	btnStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#5A3EC8")).
-			Foreground(lipgloss.Color("#FAFAFA")).
-			Padding(0, 1)
-
-	btnActiveStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#FAFAFA")).
-			Foreground(lipgloss.Color("#5A3EC8")).
-			Bold(true).
-			Padding(0, 1)
-
-	statusStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("#3C3C3C")).
-			Foreground(lipgloss.Color("#AAAAAA")).
-			Padding(0, 1)
-
-	borderDim = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#555555"))
-
-	borderActive = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#7D56F4"))
+	titleStyle     = lipgloss.NewStyle()
+	btnStyle       = lipgloss.NewStyle()
+	btnActiveStyle = lipgloss.NewStyle()
+	statusStyle    = lipgloss.NewStyle()
+	borderDim      = lipgloss.NewStyle()
+	borderHover    = lipgloss.NewStyle()
+	borderActive   = lipgloss.NewStyle()
 )
+
+func applyTheme(t config.Theme) {
+	c := lipgloss.Color
+	titleStyle = lipgloss.NewStyle().
+		Background(c(t.TitleBg)).Foreground(c(t.TitleFg)).Bold(true).Padding(0, 1)
+	btnStyle = lipgloss.NewStyle().
+		Background(c(t.BtnBg)).Foreground(c(t.BtnFg)).Padding(0, 1)
+	btnActiveStyle = lipgloss.NewStyle().
+		Background(c(t.BtnActiveBg)).Foreground(c(t.BtnActiveFg)).Bold(true).Padding(0, 1)
+	statusStyle = lipgloss.NewStyle().
+		Background(c(t.StatusBg)).Foreground(c(t.StatusFg)).Padding(0, 1)
+	borderDim = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(c(t.BorderDim))
+	borderHover = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(c(t.BorderHover))
+	borderActive = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(c(t.BorderActive))
+}
 
 func New(cfg Config) Model {
 	zone.NewGlobal()
 	absPath, _ := filepath.Abs(cfg.Path)
 	cfg.Path = absPath
 
+	// Load theme and apply to all packages before constructing any components.
+	grottoCfg := config.Load()
+	applyTheme(grottoCfg.Theme)
+	editor.ApplyTheme(grottoCfg.Theme)
+	ui.ApplyTheme(grottoCfg.Theme)
+
 	m := Model{
-		cfg:             cfg,
-		focus:           FocusSidebar,
-		sidebarVisible:  true,
-		terminalVisible: false,
-		aiPanelVisible:  !cfg.NoAI,
-		sidebarW:        defaultSidebarW,
-		aiPanelW:        defaultAIPanelW,
-		terminalRatio:   defaultTerminalRatio,
-		sidebar:         ui.New(cfg.Path),
-		panes:           editor.NewPaneManager(),
-		terminal:        terminal.New(),
-		aiPanel:         terminal.NewAI(),
+		cfg:            cfg,
+		gitRoot:        gitstatus.FindRoot(absPath),
+		focus:          FocusSidebar,
+		sidebarVisible: true,
+		aiPanelVisible: !cfg.NoAI,
+		sidebarW:       defaultSidebarW,
+		aiPanelW:       defaultAIPanelW,
+		terminalRatio:  defaultTerminalRatio,
+		sidebar:        ui.New(cfg.Path),
+		panes:          editor.NewPaneManager(),
+		terminal:       terminal.New(),
+		aiPanel:        terminal.NewAI(),
 	}
 	m.updateFocus()
+	if m.gitRoot != "" {
+		m.sidebar.Refresh(m.gitRoot)
+		m.gitWatchCh = startGitWatcher(m.gitRoot)
+	}
 	return m
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+// startGitWatcher watches .git/HEAD and .git/index and sends to the returned
+// channel whenever either file changes.
+func startGitWatcher(gitRoot string) chan struct{} {
+	ch := make(chan struct{}, 1)
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return ch
+	}
+	_ = watcher.Add(filepath.Join(gitRoot, ".git", "HEAD"))
+	_ = watcher.Add(filepath.Join(gitRoot, ".git", "index"))
+	go func() {
+		defer func() { _ = watcher.Close() }()
+		for {
+			select {
+			case _, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				// Drain burst of events before notifying
+				for len(watcher.Events) > 0 {
+					<-watcher.Events
+				}
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			case _, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+	return ch
+}
+
+func (m Model) Init() tea.Cmd {
+	if m.gitWatchCh != nil {
+		return m.waitForGitChange()
+	}
+	return nil
+}
+
+// waitForGitChange blocks until the git watcher signals a change.
+func (m Model) waitForGitChange() tea.Cmd {
+	ch := m.gitWatchCh
+	return func() tea.Msg {
+		<-ch
+		return gitExternalChangeMsg{}
+	}
+}
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
@@ -149,6 +239,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recalcLayout()
 		return m, nil
 
+	case editor.FileSavedMsg:
+		if m.gitRoot != "" {
+			m.sidebar.Refresh(m.gitRoot)
+			m.panes.RefreshAllDiffs(m.gitRoot)
+		}
+		return m, nil
+
+	case editor.BufferChangedMsg:
+		if m.gitRoot == "" {
+			return m, nil
+		}
+		m.diffSeq++
+		seq := m.diffSeq
+		path := msg.Path
+		return m, func() tea.Msg {
+			time.Sleep(150 * time.Millisecond)
+			return diffDebounceMsg{seq: seq, path: path}
+		}
+
+	case diffDebounceMsg:
+		if msg.seq != m.diffSeq || m.gitRoot == "" {
+			return m, nil
+		}
+		path := msg.path
+		gitRoot := m.gitRoot
+		return m, func() tea.Msg {
+			return diffResultMsg{path: path, changes: gitstatus.GetLineDiff(gitRoot, path)}
+		}
+
+	case diffResultMsg:
+		m.panes.UpdateLineDiff(msg.path, msg.changes)
+		return m, nil
+
+	case gitExternalChangeMsg:
+		if m.gitRoot != "" {
+			m.sidebar.Refresh(m.gitRoot)
+			m.panes.RefreshAllDiffs(m.gitRoot)
+		}
+		return m, m.waitForGitChange()
+
 	case tea.KeyPressMsg:
 		// Overlay intercepts all input when active
 		if m.overlay.Active() {
@@ -159,6 +289,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch mode {
 					case OverlayFileFinder:
 						_ = m.panes.OpenFile(filepath.Join(m.cfg.Path, result))
+						if m.gitRoot != "" {
+							m.panes.RefreshAllDiffs(m.gitRoot)
+						}
 						m.focus = FocusEditor
 						m.updateFocus()
 					case OverlayCommandPalette:
@@ -318,6 +451,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.handleDrag(msg.X, msg.Y)
 			return m, nil
 		}
+		// Detect hover over resizable border edges (visual highlight)
+		m.hoverEdge = m.detectEdgeHover(msg.X, msg.Y)
+		if m.hoverEdge != DragNone {
+			return m, nil
+		}
 
 	case tea.MouseWheelMsg:
 		m.handleMouseFocus(msg.X, msg.Y)
@@ -327,9 +465,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ui.OpenFileMsg:
 		_ = m.panes.OpenFile(msg.Path)
+		if m.gitRoot != "" {
+			m.panes.RefreshAllDiffs(m.gitRoot)
+		}
 		m.focus = FocusEditor
 		m.updateFocus()
 		return m, nil
+
+	case ui.DirLoadedMsg:
+		// Always route to sidebar regardless of focus.
+		var cmd tea.Cmd
+		m.sidebar, cmd = m.sidebar.Update(msg)
+		m.dirtyPanels |= dirtySidebar
+		cmds = append(cmds, cmd)
+		return m, tea.Batch(cmds...)
 	}
 
 	// Dispatch to focused child
@@ -337,15 +486,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.focus {
 	case FocusSidebar:
 		m.sidebar, cmd = m.sidebar.Update(msg)
+		m.dirtyPanels |= dirtySidebar
 		cmds = append(cmds, cmd)
 	case FocusEditor:
 		m.panes, cmd = m.panes.Update(msg)
 		cmds = append(cmds, cmd)
 	case FocusTerminal:
 		m.terminal, cmd = m.terminal.Update(msg)
+		m.dirtyPanels |= dirtyTerminal
 		cmds = append(cmds, cmd)
 	case FocusAI:
 		m.aiPanel, cmd = m.aiPanel.Update(msg)
+		m.dirtyPanels |= dirtyAI
 		cmds = append(cmds, cmd)
 	}
 
@@ -353,10 +505,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := msg.(terminal.TickMsg); ok {
 		if m.focus != FocusTerminal && m.terminalVisible {
 			m.terminal, cmd = m.terminal.Update(msg)
+			m.dirtyPanels |= dirtyTerminal
 			cmds = append(cmds, cmd)
 		}
 		if m.focus != FocusAI && m.aiPanelVisible {
 			m.aiPanel, cmd = m.aiPanel.Update(msg)
+			m.dirtyPanels |= dirtyAI
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -481,6 +635,7 @@ func (m *Model) updateFocus() {
 	m.panes.SetFocused(m.focus == FocusEditor)
 	m.terminal.SetFocused(m.focus == FocusTerminal)
 	m.aiPanel.SetFocused(m.focus == FocusAI)
+	m.dirtyPanels = dirtyAll // border color changes on focus
 }
 
 // startDrag detects which panel edge to resize based on right-click position.
@@ -519,6 +674,43 @@ func (m *Model) startDrag(x, y int) {
 	}
 }
 
+// detectEdgeHover returns which border edge the mouse is hovering over (within 1 cell).
+func (m *Model) detectEdgeHover(x, y int) DragTarget {
+	const threshold = 1
+
+	sw := 0
+	if m.sidebarVisible {
+		sw = m.sidebarW
+	}
+	aw := 0
+	if m.aiPanelVisible {
+		aw = m.aiPanelW
+	}
+	aiEdge := m.width - aw
+
+	// Check horizontal terminal divider
+	if m.terminalVisible {
+		contentH := max(m.height-chromeH, 1)
+		tH := max(int(float64(contentH)*m.terminalRatio), 5)
+		termTop := 1 + contentH - tH
+		if abs(y-termTop) <= threshold && y > 0 && y < m.height-1 {
+			return DragTerminalEdge
+		}
+	}
+
+	// Check vertical dividers (only in the content area, not title/status)
+	if y > 0 && y < m.height-1 {
+		if m.sidebarVisible && abs(x-sw) <= threshold {
+			return DragSidebarEdge
+		}
+		if m.aiPanelVisible && abs(x-aiEdge) <= threshold {
+			return DragAIEdge
+		}
+	}
+
+	return DragNone
+}
+
 func abs(x int) int {
 	if x < 0 {
 		return -x
@@ -545,6 +737,7 @@ func (m *Model) handleDrag(x, y int) {
 }
 
 func (m *Model) recalcLayout() {
+	m.dirtyPanels = dirtyAll
 	contentH := max(m.height-chromeH, 1)
 
 	sw := 0
@@ -565,11 +758,12 @@ func (m *Model) recalcLayout() {
 	tH := 0
 	if m.terminalVisible {
 		tH = max(int(float64(contentH)*m.terminalRatio), 5)
-		edH = max(contentH-tH-4, 1)
+		edH = max(contentH-tH-2, 1)
 		tH = max(tH-2, 1)
 	}
 
 	m.sidebar.SetSize(si, ch)
+	m.sidebar.SetScreenY(2) // title bar (1) + top border (1)
 	m.terminal.SetSize(max(cw-2, 0), tH)
 	m.aiPanel.SetSize(ai, ch)
 
@@ -600,6 +794,17 @@ func (m Model) View() tea.View {
 
 	contentH := max(m.height-chromeH, 1)
 
+	// Compute column widths (mirrors recalcLayout)
+	sw := 0
+	if m.sidebarVisible {
+		sw = m.sidebarW
+	}
+	aw := 0
+	if m.aiPanelVisible {
+		aw = m.aiPanelW
+	}
+	cw := max(m.width-sw-aw, 10)
+
 	// Title bar with clickable buttons
 	dir := filepath.Base(m.cfg.Path)
 	titleLeft := fmt.Sprintf(" ● grotto — %s", dir)
@@ -627,7 +832,9 @@ func (m Model) View() tea.View {
 
 	// Status bar
 	statusText := " READY"
-	if m.panes.HasFile() && m.panes.Buf() != nil {
+	if m.hoverEdge != DragNone {
+		statusText = " ↔ Right-click + drag to resize"
+	} else if m.panes.HasFile() && m.panes.Buf() != nil {
 		b := m.panes.Buf()
 		statusText = fmt.Sprintf(" Ln %d, Col %d │ %s",
 			b.Cursor.Line+1, b.Cursor.Col+1,
@@ -642,31 +849,57 @@ func (m Model) View() tea.View {
 	var center string
 	if m.panes.PaneCount() == 1 {
 		eb := m.bdr(FocusEditor)
-		center = eb.Width(m.panes.Width()).Height(m.panes.Height()).Render(m.panes.View())
+		center = eb.Width(cw - 2).Height(m.panes.Height()).Render(m.panes.View())
 	} else {
 		center = m.panes.View()
 	}
 
 	if m.terminalVisible {
-		tb := m.bdr(FocusTerminal)
-		termBox := tb.Width(m.terminal.Width()).Height(m.terminal.Height()).Render(m.terminal.View())
-		center = lipgloss.JoinVertical(lipgloss.Left, center, termBox)
+		if m.dirtyPanels&dirtyTerminal != 0 || m.cachedTerminal == "" {
+			tb := m.bdr(FocusTerminal)
+			m.cachedTerminal = tb.Width(cw - 2).Height(m.terminal.Height()).Render(m.terminal.View())
+		}
+		center = lipgloss.JoinVertical(lipgloss.Left, center, m.cachedTerminal)
+	}
+
+	// Clamp center column to exactly contentH lines
+	centerLines := strings.Split(center, "\n")
+	if len(centerLines) > contentH {
+		centerLines = centerLines[:contentH]
+		center = strings.Join(centerLines, "\n")
 	}
 
 	var cols []string
 	if m.sidebarVisible {
-		sb := m.bdr(FocusSidebar)
-		sideBox := sb.Width(m.sidebar.Width()).Height(contentH - 2).Render(m.sidebar.View())
-		cols = append(cols, sideBox)
+		if m.dirtyPanels&dirtySidebar != 0 || m.cachedSidebar == "" {
+			sb := m.bdr(FocusSidebar)
+			m.cachedSidebar = sb.Height(contentH - 2).Render(m.sidebar.View())
+		}
+		cols = append(cols, m.cachedSidebar)
 	}
 	cols = append(cols, center)
 	if m.aiPanelVisible {
-		ab := m.bdr(FocusAI)
-		aiBox := ab.Width(m.aiPanel.Width()).Height(contentH - 2).Render(m.aiPanel.View())
-		cols = append(cols, aiBox)
+		if m.dirtyPanels&dirtyAI != 0 || m.cachedAI == "" {
+			ab := m.bdr(FocusAI)
+			aiBox := ab.Width(aw - 2).Height(contentH - 2).Render(m.aiPanel.View())
+			// Clamp to exactly contentH lines, preserving bottom border
+			aiBoxLines := strings.Split(aiBox, "\n")
+			if len(aiBoxLines) > contentH {
+				top := aiBoxLines[:contentH-1]
+				bottom := aiBoxLines[len(aiBoxLines)-1]
+				aiBoxLines = append(top, bottom)
+			}
+			m.cachedAI = strings.Join(aiBoxLines, "\n")
+		}
+		cols = append(cols, m.cachedAI)
 	}
+	m.dirtyPanels = 0
 
 	content := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+
+	// Only zone.Scan the title bar (where zone markers live) — not the full output
+	title = zone.Scan(title)
+
 	full := lipgloss.JoinVertical(lipgloss.Left, title, content, status)
 
 	// Overlay floats on top
@@ -684,7 +917,7 @@ func (m Model) View() tea.View {
 		full = strings.Join(lines, "\n")
 	}
 
-	v.Content = zone.Scan(full)
+	v.Content = full
 	return v
 }
 
@@ -697,6 +930,27 @@ func (m Model) btn(id, label string, active bool) string {
 }
 
 func (m Model) bdr(p FocusedPanel) lipgloss.Style {
+	// Hover over resize edge takes priority — signals "draggable"
+	if m.hoverEdge != DragNone {
+		switch p {
+		case FocusSidebar:
+			if m.hoverEdge == DragSidebarEdge {
+				return borderHover
+			}
+		case FocusAI:
+			if m.hoverEdge == DragAIEdge {
+				return borderHover
+			}
+		case FocusEditor:
+			if m.hoverEdge == DragSidebarEdge || m.hoverEdge == DragAIEdge || m.hoverEdge == DragTerminalEdge {
+				return borderHover
+			}
+		case FocusTerminal:
+			if m.hoverEdge == DragTerminalEdge {
+				return borderHover
+			}
+		}
+	}
 	if m.focus == p {
 		return borderActive
 	}
