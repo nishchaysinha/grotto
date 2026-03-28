@@ -24,8 +24,8 @@ var (
 	selectedStyle     = lipgloss.NewStyle().
 				Background(lipgloss.Color("#7D56F4")).
 				Foreground(lipgloss.Color("#FAFAFA"))
-	dirIconStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#89DDFF"))
-	indentGuide    = lipgloss.NewStyle().Foreground(lipgloss.Color("#3E4452"))
+	dirIconStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#89DDFF"))
+	indentGuide   = lipgloss.NewStyle().Foreground(lipgloss.Color("#3E4452"))
 	fileIconStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#6D8086"))
 )
 

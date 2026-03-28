@@ -13,9 +13,9 @@ import (
 
 // Highlighter caches syntax tokens per line.
 type Highlighter struct {
-	lexer    chroma.Lexer
-	style    *chroma.Style
-	cache    map[int][]StyledSpan // line number → spans
+	lexer     chroma.Lexer
+	style     *chroma.Style
+	cache     map[int][]StyledSpan        // line number → spans
 	ansiCache map[chroma.TokenType]string // token type → ANSI prefix
 }
 

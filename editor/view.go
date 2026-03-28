@@ -68,15 +68,15 @@ var (
 	gutterSep      = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 
 	// Pre-computed raw ANSI prefixes for hot render path
-	ansiGutter     = BuildANSIPrefix("#555555", "", false, false, false)
-	ansiGutterSep  = BuildANSIPrefix("#555555", "", false, false, false)
-	ansiCurLine    = BuildANSIPrefix("", "#2A2A2A", false, false, false)
-	ansiCursor     = "\x1b[7m" // reverse
-	ansiBracketHL  = BuildANSIPrefix("", "#44475a", true, false, false)
+	ansiGutter      = BuildANSIPrefix("#555555", "", false, false, false)
+	ansiGutterSep   = BuildANSIPrefix("#555555", "", false, false, false)
+	ansiCurLine     = BuildANSIPrefix("", "#2A2A2A", false, false, false)
+	ansiCursor      = "\x1b[7m" // reverse
+	ansiBracketHL   = BuildANSIPrefix("", "#44475a", true, false, false)
 	ansiSelectionBg = BuildANSIPrefix("", "#44475a", false, false, false)
-	ansiGitAdded   = BuildANSIPrefix("#98C379", "", false, false, false)
-	ansiGitMod     = BuildANSIPrefix("#E5C07B", "", false, false, false)
-	ansiGitDel     = BuildANSIPrefix("#E06C75", "", false, false, false)
+	ansiGitAdded    = BuildANSIPrefix("#98C379", "", false, false, false)
+	ansiGitMod      = BuildANSIPrefix("#E5C07B", "", false, false, false)
+	ansiGitDel      = BuildANSIPrefix("#E06C75", "", false, false, false)
 )
 
 func copyToClipboard(text string) tea.Cmd { return clipCopy(text) }
