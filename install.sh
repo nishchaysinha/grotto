@@ -124,6 +124,7 @@ get_shell_rc_file() {
         zsh) echo "${HOME}/.zshrc" ;;
         fish) echo "${HOME}/.config/fish/config.fish" ;;
         ksh) echo "${HOME}/.kshrc" ;;
+        sh|dash|ash) echo "${HOME}/.profile" ;;
         *) echo "" ;;
     esac
 }
@@ -135,7 +136,7 @@ add_path_to_shell_config() {
     local path_line=""
 
     if [ "$shell_name" = "fish" ]; then
-        path_line="set -gx PATH \$PATH ${install_dir}"
+        path_line="fish_add_path ${install_dir}"
     else
         path_line="export PATH=\"\$PATH:${install_dir}\""
     fi
@@ -143,7 +144,7 @@ add_path_to_shell_config() {
     mkdir -p "$(dirname "$rc_file")"
     touch "$rc_file"
 
-    if grep -F "$install_dir" "$rc_file" > /dev/null 2>&1; then
+    if grep -E '^[[:space:]]*(export[[:space:]]+PATH=|PATH=|set[[:space:]]+-gx[[:space:]]+PATH[[:space:]]|fish_add_path[[:space:]])' "$rc_file" | grep -F "$install_dir" > /dev/null 2>&1; then
         log_info "${install_dir} already configured in ${rc_file}"
         return
     fi
@@ -199,8 +200,6 @@ main() {
     case ":$PATH:" in
         *":${INSTALL_DIR}:"*) ;;
         *)
-            local shell_name
-            local rc_file
             shell_name=$(detect_shell)
             rc_file=$(get_shell_rc_file "$shell_name")
 
@@ -210,7 +209,7 @@ main() {
                 add_path_to_shell_config "$INSTALL_DIR" "$shell_name" "$rc_file"
                 log_info "Run this to use grotto in your current shell session:"
                 if [ "$shell_name" = "fish" ]; then
-                    log_info "  set -gx PATH \$PATH ${INSTALL_DIR}"
+                    log_info "  fish_add_path ${INSTALL_DIR}"
                 else
                     log_info "  export PATH=\"\$PATH:${INSTALL_DIR}\""
                 fi
