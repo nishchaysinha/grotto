@@ -5,7 +5,7 @@
 set -e
 
 REPO="nishchaysinha/grotto"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 BINARY_NAME="grotto"
 
 # Colors for output
@@ -105,15 +105,56 @@ install_binary() {
     local binary_path="$1"
     local install_dir="$2"
 
-    # Check if we can write to install dir
-    if [ -w "$install_dir" ]; then
-        cp "$binary_path" "${install_dir}/${BINARY_NAME}"
-        chmod +x "${install_dir}/${BINARY_NAME}"
+    cp "$binary_path" "${install_dir}/${BINARY_NAME}"
+    chmod +x "${install_dir}/${BINARY_NAME}"
+}
+
+detect_shell() {
+    if [ -n "$SHELL" ]; then
+        basename "$SHELL"
     else
-        log_info "Requesting sudo to install to ${install_dir}..."
-        sudo cp "$binary_path" "${install_dir}/${BINARY_NAME}"
-        sudo chmod +x "${install_dir}/${BINARY_NAME}"
+        ps -p "$$" -o comm= 2>/dev/null | sed 's/^-//'
     fi
+}
+
+get_shell_rc_file() {
+    local shell_name="$1"
+    case "$shell_name" in
+        bash) echo "${HOME}/.bashrc" ;;
+        zsh) echo "${HOME}/.zshrc" ;;
+        fish) echo "${HOME}/.config/fish/config.fish" ;;
+        ksh) echo "${HOME}/.kshrc" ;;
+        sh|dash|ash) echo "${HOME}/.profile" ;;
+        *) echo "" ;;
+    esac
+}
+
+add_path_to_shell_config() {
+    local install_dir="$1"
+    local shell_name="$2"
+    local rc_file="$3"
+    local path_line=""
+
+    if [ "$shell_name" = "fish" ]; then
+        path_line="fish_add_path ${install_dir}"
+    else
+        path_line="export PATH=\"\$PATH:${install_dir}\""
+    fi
+
+    mkdir -p "$(dirname "$rc_file")"
+    touch "$rc_file"
+
+    if grep -E '^[[:space:]]*(export[[:space:]]+PATH=|PATH=|set[[:space:]]+-gx[[:space:]]+PATH[[:space:]]|fish_add_path[[:space:]])' "$rc_file" | grep -F "$install_dir" > /dev/null 2>&1; then
+        log_info "${install_dir} already configured in ${rc_file}"
+        return
+    fi
+
+    {
+        printf "\n"
+        printf "# Added by grotto installer\n"
+        printf "%s\n" "$path_line"
+    } >> "$rc_file"
+    log_info "Added ${install_dir} to PATH in ${rc_file}"
 }
 
 main() {
@@ -139,17 +180,18 @@ main() {
 
     binary_path=$(download_binary "$os" "$arch" "$version" "$tmpdir")
 
-    # Check if install dir exists, create if needed
     if [ ! -d "$INSTALL_DIR" ]; then
         log_info "Creating install directory: ${INSTALL_DIR}"
-        if [ -w "$(dirname "$INSTALL_DIR")" ]; then
-            mkdir -p "$INSTALL_DIR"
-        else
-            sudo mkdir -p "$INSTALL_DIR"
-        fi
+        mkdir -p "$INSTALL_DIR" || {
+            log_error "Unable to create ${INSTALL_DIR}. Set INSTALL_DIR to a writable location and try again."
+            exit 1
+        }
     fi
 
-    install_binary "$binary_path" "$INSTALL_DIR"
+    install_binary "$binary_path" "$INSTALL_DIR" || {
+        log_error "Unable to install to ${INSTALL_DIR}. Set INSTALL_DIR to a writable location and try again."
+        exit 1
+    }
 
     log_info "Successfully installed grotto to ${INSTALL_DIR}/${BINARY_NAME}"
     log_info "Run 'grotto --version' to verify the installation"
@@ -158,9 +200,25 @@ main() {
     case ":$PATH:" in
         *":${INSTALL_DIR}:"*) ;;
         *)
+            shell_name=$(detect_shell)
+            rc_file=$(get_shell_rc_file "$shell_name")
+
             log_warn "${INSTALL_DIR} is not in your PATH"
-            log_warn "Add it to your PATH by running:"
-            log_warn "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+
+            if [ -n "$rc_file" ]; then
+                add_path_to_shell_config "$INSTALL_DIR" "$shell_name" "$rc_file"
+                log_info "Run this to use grotto in your current shell session:"
+                if [ "$shell_name" = "fish" ]; then
+                    log_info "  fish_add_path ${INSTALL_DIR}"
+                else
+                    log_info "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+                fi
+            else
+                log_warn "Detected shell '${shell_name:-unknown}' is not automatically supported."
+                log_warn "Please run one of the following based on your shell:"
+                log_warn "  export PATH=\"\$PATH:${INSTALL_DIR}\""
+                log_warn "or add that line to your shell profile (e.g. ~/.bashrc or ~/.zshrc)."
+            fi
             ;;
     esac
 }
