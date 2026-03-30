@@ -10,8 +10,7 @@ A terminal-native TUI code editor built with Go and Bubble Tea v2.
 
 ## Demo
 
-https://github.com/user-attachments/assets/grotto.webm
-
+<video src="https://github.com/user-attachments/assets/grotto.webm" controls width="100%"></video>
 > Can't see the video? View the [demo recording](screenshots/grotto.webm) directly.
 
 ## Features
