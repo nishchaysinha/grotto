@@ -122,7 +122,10 @@ func (o *Overlay) Update(msg tea.Msg) (bool, string) {
 		return true, ""
 	case "down", "ctrl+n":
 		if o.mode == OverlayShortcuts {
-			o.scroll++
+			maxScroll := shortcutsMaxScroll()
+			if o.scroll < maxScroll {
+				o.scroll++
+			}
 			return true, ""
 		}
 		if o.selected < len(o.filtered)-1 {
@@ -319,6 +322,17 @@ func (o *Overlay) View(width, height int) string {
 	return strings.Repeat(" ", pad) + box
 }
 
+// shortcutsMaxScroll returns the maximum scroll offset for the shortcuts overlay,
+// computed from the static content. The 20-line visible window matches viewShortcuts.
+func shortcutsMaxScroll() int {
+	totalLines := 2 // header + blank
+	for _, sec := range shortcutSections {
+		totalLines += 1 + len(sec.rows) + 1 // section title + rows + blank
+	}
+	maxVisible := 20
+	return max(totalLines-maxVisible, 0)
+}
+
 // viewShortcuts renders the keyboard shortcuts reference overlay.
 func (o *Overlay) viewShortcuts(width, height int) string {
 	boxW := min(width-4, 66)
@@ -339,8 +353,8 @@ func (o *Overlay) viewShortcuts(width, height int) string {
 		for _, row := range sec.rows {
 			key := keyStyle.Render(row[0])
 			desc := row[1]
-			// Pad key column
-			padding := max(colW-len(row[0]), 1)
+			// Pad key column using visual width to handle Unicode arrows correctly
+			padding := max(colW-lipgloss.Width(row[0]), 1)
 			line := key + strings.Repeat(" ", padding) + desc
 			allLines = append(allLines, line)
 		}
