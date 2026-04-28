@@ -218,14 +218,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if len(m.tabs) > 0 && m.scrollY == 0 {
 			m.captureHistory()
 		}
-		anyAlive := false
-		for _, t := range m.tabs {
-			if !t.done.Load() {
-				anyAlive = true
-				break
-			}
-		}
-		if !anyAlive && len(m.tabs) == 0 {
+		if len(m.tabs) == 0 {
 			m.ticking = false
 			return m, nil
 		}

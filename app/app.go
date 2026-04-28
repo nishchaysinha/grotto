@@ -999,6 +999,8 @@ func (m *Model) execCommand(name string) tea.Cmd {
 	case "Close Pane":
 		m.panes.ClosePane()
 		m.recalcLayout()
+	case "Quit":
+		return tea.Quit
 	case "AI: kiro-cli", "AI: claude", "AI: codex", "AI: shell (plain terminal)":
 		provider := strings.TrimPrefix(name, "AI: ")
 		if provider == "shell (plain terminal)" {

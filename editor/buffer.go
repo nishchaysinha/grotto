@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 type Position struct {
@@ -140,7 +141,9 @@ func (b *Buffer) Backspace() {
 	}
 	var delStart Position
 	if b.Cursor.Col > 0 {
-		delStart = Position{Line: b.Cursor.Line, Col: b.Cursor.Col - 1}
+		line := b.Lines[b.Cursor.Line]
+		_, runeSize := utf8.DecodeLastRuneInString(line[:b.Cursor.Col])
+		delStart = Position{Line: b.Cursor.Line, Col: b.Cursor.Col - runeSize}
 	} else {
 		delStart = Position{Line: b.Cursor.Line - 1, Col: len(b.Lines[b.Cursor.Line-1])}
 	}
@@ -201,7 +204,8 @@ func (b *Buffer) CursorDown() {
 
 func (b *Buffer) CursorLeft() {
 	if b.Cursor.Col > 0 {
-		b.Cursor.Col--
+		_, size := utf8.DecodeLastRuneInString(b.Lines[b.Cursor.Line][:b.Cursor.Col])
+		b.Cursor.Col -= size
 	} else if b.Cursor.Line > 0 {
 		b.Cursor.Line--
 		b.Cursor.Col = len(b.Lines[b.Cursor.Line])
@@ -209,8 +213,10 @@ func (b *Buffer) CursorLeft() {
 }
 
 func (b *Buffer) CursorRight() {
-	if b.Cursor.Col < len(b.Lines[b.Cursor.Line]) {
-		b.Cursor.Col++
+	line := b.Lines[b.Cursor.Line]
+	if b.Cursor.Col < len(line) {
+		_, size := utf8.DecodeRuneInString(line[b.Cursor.Col:])
+		b.Cursor.Col += size
 	} else if b.Cursor.Line < len(b.Lines)-1 {
 		b.Cursor.Line++
 		b.Cursor.Col = 0
@@ -236,12 +242,20 @@ func (b *Buffer) CursorWordLeft() {
 	line := b.Lines[b.Cursor.Line]
 	col := b.Cursor.Col
 	// Skip whitespace/punctuation backwards
-	for col > 0 && !isWordChar(rune(line[col-1])) {
-		col--
+	for col > 0 {
+		r, size := utf8.DecodeLastRuneInString(line[:col])
+		if isWordChar(r) {
+			break
+		}
+		col -= size
 	}
 	// Skip word chars backwards
-	for col > 0 && isWordChar(rune(line[col-1])) {
-		col--
+	for col > 0 {
+		r, size := utf8.DecodeLastRuneInString(line[:col])
+		if !isWordChar(r) {
+			break
+		}
+		col -= size
 	}
 	b.Cursor.Col = col
 }
@@ -257,12 +271,20 @@ func (b *Buffer) CursorWordRight() {
 	}
 	col := b.Cursor.Col
 	// Skip word chars forward
-	for col < len(line) && isWordChar(rune(line[col])) {
-		col++
+	for col < len(line) {
+		r, size := utf8.DecodeRuneInString(line[col:])
+		if !isWordChar(r) {
+			break
+		}
+		col += size
 	}
 	// Skip whitespace/punctuation forward
-	for col < len(line) && !isWordChar(rune(line[col])) {
-		col++
+	for col < len(line) {
+		r, size := utf8.DecodeRuneInString(line[col:])
+		if isWordChar(r) {
+			break
+		}
+		col += size
 	}
 	b.Cursor.Col = col
 }

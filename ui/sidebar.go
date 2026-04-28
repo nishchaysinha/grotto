@@ -179,9 +179,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if maxScroll < 0 {
 			maxScroll = 0
 		}
-		if msg.Y < 0 && m.scroll > 0 {
+		if msg.Button == tea.MouseWheelUp && m.scroll > 0 {
 			m.scroll--
-		} else if msg.Y > 0 && m.scroll < maxScroll {
+		} else if msg.Button == tea.MouseWheelDown && m.scroll < maxScroll {
 			m.scroll++
 		}
 	}
