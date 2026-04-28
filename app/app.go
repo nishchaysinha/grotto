@@ -315,6 +315,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+q":
 			return m, tea.Quit
+		case "f5":
+			m.overlay.OpenShortcuts()
+			return m, nil
 		case "ctrl+p", "f1":
 			if m.focus != FocusTerminal && m.focus != FocusAI {
 				m.overlay.OpenFileFinder(m.cfg.Path)
@@ -442,6 +445,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, cmd
 				}
 				return m, m.toggleAI()
+			}
+			if zone.Get("btn-help").InBounds(msg) {
+				m.overlay.OpenShortcuts()
+				return m, nil
 			}
 		}
 		m.handleMouseFocus(msg.X, msg.Y)
@@ -824,8 +831,9 @@ func (m Model) View() tea.View {
 	bSplit := m.btn("btn-split", "◫ Split", false)
 	bTerm := m.btn("btn-terminal", "▶ Term", m.terminalVisible)
 	bAI := m.btn("btn-ai", "✦ AI", m.aiPanelVisible)
+	bHelp := m.btn("btn-help", "? Keys", false)
 
-	buttons := bFiles + " " + bFind + " " + bCmd + " " + bSplit + " " + bTerm + " " + bAI
+	buttons := bFiles + " " + bFind + " " + bCmd + " " + bSplit + " " + bTerm + " " + bAI + " " + bHelp
 	gap := max(m.width-lipgloss.Width(titleLeft)-lipgloss.Width(buttons)-2, 1)
 	titleContent := titleLeft + strings.Repeat(" ", gap) + buttons
 	title := titleStyle.Width(m.width).Render(titleContent)

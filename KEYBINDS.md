@@ -10,10 +10,11 @@
 | Ctrl+Shift+A / F4 | Toggle AI panel |
 | Ctrl+P / F1 | Fuzzy file finder |
 | Ctrl+Shift+P / F2 | Command palette |
+| F5 | Show keyboard shortcuts |
 | Ctrl+1/2/3/4 | Focus pane 1-4 (or sidebar/terminal/AI when single pane) |
 | Esc | Focus sidebar (from editor) |
 
-All of these are also available as clickable buttons in the title bar.
+All of these are also available as clickable buttons in the title bar (including **? Keys** to open this reference).
 
 ## Editor — Navigation
 
