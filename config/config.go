@@ -59,62 +59,27 @@ type Theme struct {
 
 // Config is the top-level configuration structure.
 type Config struct {
-	Theme Theme `toml:"theme"`
+	// ThemeName selects a built-in theme by its identifier (e.g. "nord",
+	// "solarized-dark"). If empty, defaults to "dracula". Per-field overrides
+	// in the [theme] table are applied on top of the selected base.
+	ThemeName string `toml:"theme_name"`
+	Theme     Theme  `toml:"theme"`
 }
 
-// DefaultTheme returns the built-in Dracula-inspired theme.
+// DefaultTheme returns the built-in Dracula theme — grotto's default look.
+// Callers wanting a specific named theme should use ThemeByName instead.
 func DefaultTheme() Theme {
-	return Theme{
-		// App chrome
-		TitleBg:      "#7D56F4",
-		TitleFg:      "#FAFAFA",
-		BtnBg:        "#5A3EC8",
-		BtnFg:        "#FAFAFA",
-		BtnActiveBg:  "#FAFAFA",
-		BtnActiveFg:  "#5A3EC8",
-		StatusBg:     "#3C3C3C",
-		StatusFg:     "#AAAAAA",
-		BorderDim:    "#555555",
-		BorderHover:  "#A98AFF",
-		BorderActive: "#7D56F4",
-
-		// Editor
-		GutterFg:    "#555555",
-		CurLineBg:   "#2A2A2A",
-		TabBarBg:    "#21222C",
-		TabFg:       "#888888",
-		TabActiveFg: "#FFFFFF",
-		TabActiveBg: "#44475a",
-		SelectionBg: "#44475a",
-		BracketHLBg: "#44475a",
-
-		// Search overlay
-		SearchOverlayBg:     "#282A36",
-		SearchOverlayFg:     "#F8F8F2",
-		SearchInputBg:       "#44475A",
-		SearchInputFg:       "#F8F8F2",
-		SearchMatchBg:       "#FFB86C",
-		SearchMatchFg:       "#282A36",
-		SearchActiveMatchBg: "#FF79C6",
-		SearchActiveMatchFg: "#282A36",
-		SearchLabelFg:       "#6272A4",
-
-		// Sidebar
-		SidebarSelectedBg: "#7D56F4",
-		SidebarSelectedFg: "#FAFAFA",
-		SidebarDirIcon:    "#89DDFF",
-
-		// Git status
-		GitAdded:     "#50FA7B",
-		GitModified:  "#E5C07B",
-		GitDeleted:   "#E06C75",
-		GitRenamed:   "#61AFEF",
-		GitUntracked: "#A9DC76",
-	}
+	return DraculaTheme()
 }
 
 // Load reads ~/.config/grotto/config.toml if it exists, fills any missing
 // fields with defaults, and returns the result.
+//
+// Resolution order for theme colors:
+//  1. Start with Dracula as the baseline.
+//  2. If `theme_name = "..."` is set and names a built-in theme, use that as
+//     the baseline instead.
+//  3. Apply any per-field overrides from the [theme] table on top.
 func Load() Config {
 	cfg := Config{Theme: DefaultTheme()}
 
@@ -128,11 +93,19 @@ func Load() Config {
 		return cfg // file doesn't exist — use defaults silently
 	}
 
-	// Decode into a partial struct; only present keys override defaults.
 	var partial Config
 	if _, err := toml.Decode(string(data), &partial); err != nil {
 		return cfg // malformed TOML — use defaults silently
 	}
+
+	if partial.ThemeName != "" {
+		if base, ok := ThemeByName(partial.ThemeName); ok {
+			cfg.Theme = base
+			cfg.ThemeName = partial.ThemeName
+		}
+	}
+
+	// Per-field overrides layer on top of the selected base.
 	mergeTheme(&cfg.Theme, partial.Theme)
 	return cfg
 }

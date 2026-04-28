@@ -966,7 +966,7 @@ func (m Model) bdr(p FocusedPanel) lipgloss.Style {
 }
 
 func (m Model) commandNames() []string {
-	return []string{
+	names := []string{
 		"Toggle Sidebar",
 		"Toggle Terminal",
 		"Toggle AI Panel",
@@ -977,8 +977,12 @@ func (m Model) commandNames() []string {
 		"Split Right",
 		"Split Down",
 		"Close Pane",
-		"Quit",
 	}
+	for _, t := range config.BuiltInThemeNames() {
+		names = append(names, "Theme: "+t)
+	}
+	names = append(names, "Quit")
+	return names
 }
 
 func (m *Model) execCommand(name string) tea.Cmd {
@@ -1012,6 +1016,27 @@ func (m *Model) execCommand(name string) tea.Cmd {
 		m.recalcLayout()
 		m.updateFocus()
 		return m.aiPanel.AddTermWithCmd(provider, m.aiCommand())
+	default:
+		if strings.HasPrefix(name, "Theme: ") {
+			m.applyNamedTheme(strings.TrimPrefix(name, "Theme: "))
+			return nil
+		}
 	}
 	return nil
+}
+
+// applyNamedTheme swaps the active theme across all packages and invalidates
+// cached render output so the next frame reflects the new colors.
+func (m *Model) applyNamedTheme(themeName string) {
+	theme, ok := config.ThemeByName(themeName)
+	if !ok {
+		return
+	}
+	applyTheme(theme)
+	editor.ApplyTheme(theme)
+	ui.ApplyTheme(theme)
+	m.dirtyPanels = dirtyAll
+	m.cachedSidebar = ""
+	m.cachedTerminal = ""
+	m.cachedAI = ""
 }

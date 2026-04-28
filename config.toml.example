@@ -1,6 +1,13 @@
 # Grotto configuration — copy to ~/.config/grotto/config.toml to customize.
 # All color values are hex strings. Missing keys fall back to the built-in defaults.
 
+# Pick a built-in theme by name. Leave unset (or empty) for "dracula".
+# Available: dracula, nord, solarized-dark, solarized-light, gruvbox-dark, tokyonight
+# You can also switch themes at runtime via the command palette (Ctrl+Shift+P / F2).
+# theme_name = "nord"
+
+# Per-field overrides layer on top of whichever theme is selected above,
+# so you can pick `nord` and still recolor, say, the title bar.
 [theme]
 
 # ── App chrome ──────────────────────────────────────────────────────────────
