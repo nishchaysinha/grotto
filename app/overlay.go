@@ -197,6 +197,7 @@ var shortcutSections = []shortcutSection{
 			{"Ctrl+B", "Toggle sidebar"},
 			{"Ctrl+` / F3", "Toggle terminal"},
 			{"Ctrl+Shift+A / F4", "Toggle AI panel"},
+			{"Ctrl+Shift+L", "Send selection to AI"},
 			{"Ctrl+P / F1", "Fuzzy file finder"},
 			{"Ctrl+Shift+P / F2", "Command palette"},
 			{"F5", "Show keyboard shortcuts"},

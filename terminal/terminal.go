@@ -165,6 +165,21 @@ func (m *Model) SetFocused(f bool) { m.focused = f }
 func (m Model) Width() int         { return m.width }
 func (m Model) Height() int        { return m.height }
 
+// SendText writes the given string to the active tab's PTY stdin, as though
+// the user had typed it. Used by the app to pipe editor selections into the
+// AI CLI. Returns the number of bytes written and any error from the underlying
+// write. No-op if no tab is active.
+func (m *Model) SendText(s string) (int, error) {
+	if len(m.tabs) == 0 {
+		return 0, nil
+	}
+	t := m.tabs[m.active]
+	if t.ptyFile == nil {
+		return 0, nil
+	}
+	return io.WriteString(t.ptyFile, s)
+}
+
 // captureHistory snapshots the top row; if it changed, the old one scrolled off.
 func (m *Model) captureHistory() {
 	if len(m.tabs) == 0 || m.width <= 0 {

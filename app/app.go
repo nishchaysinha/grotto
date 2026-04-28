@@ -239,6 +239,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.recalcLayout()
 		return m, nil
 
+	case sendAIPayloadMsg:
+		// If the AI panel was just opened, the PTY may not be ready yet.
+		// Poll a few times before giving up rather than dropping the payload.
+		if m.aiPanel.TabCount() == 0 {
+			if msg.attempts >= 20 {
+				return m, nil // give up after ~1s
+			}
+			next := msg
+			next.attempts++
+			return m, func() tea.Msg {
+				time.Sleep(50 * time.Millisecond)
+				return next
+			}
+		}
+		_, _ = m.aiPanel.SendText(msg.payload)
+		return m, nil
+
 	case editor.FileSavedMsg:
 		if m.gitRoot != "" {
 			m.sidebar.Refresh(m.gitRoot)
@@ -340,6 +357,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.toggleTerminal()
 		case "ctrl+shift+a", "f4":
 			return m, m.toggleAI()
+		case "ctrl+shift+l":
+			return m, m.sendSelectionToAI()
 		// Split panes
 		case "ctrl+\\":
 			m.panes.Split(editor.SplitRight)
@@ -970,6 +989,7 @@ func (m Model) commandNames() []string {
 		"Toggle Sidebar",
 		"Toggle Terminal",
 		"Toggle AI Panel",
+		"Send Selection to AI",
 		"AI: kiro-cli",
 		"AI: claude",
 		"AI: codex",
@@ -990,6 +1010,8 @@ func (m *Model) execCommand(name string) tea.Cmd {
 		return m.toggleTerminal()
 	case "Toggle AI Panel":
 		return m.toggleAI()
+	case "Send Selection to AI":
+		return m.sendSelectionToAI()
 	case "Split Right":
 		m.panes.Split(editor.SplitRight)
 		m.recalcLayout()
