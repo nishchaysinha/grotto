@@ -373,6 +373,37 @@ func (pm PaneManager) HasSearchActive() bool {
 	return pm.panes[pm.active].search.Active()
 }
 
+// DirtyBuffers returns the unique set of buffers with unsaved changes across
+// all panes (buffers may be shared between panes — they're de-duped here).
+func (pm PaneManager) DirtyBuffers() []*Buffer {
+	seen := make(map[*Buffer]struct{})
+	var out []*Buffer
+	for i := range pm.panes {
+		for _, t := range pm.panes[i].tabs {
+			if t.buf == nil || !t.buf.Dirty {
+				continue
+			}
+			if _, ok := seen[t.buf]; ok {
+				continue
+			}
+			seen[t.buf] = struct{}{}
+			out = append(out, t.buf)
+		}
+	}
+	return out
+}
+
+// SaveAllDirty persists every dirty buffer. Returns the first error encountered,
+// or nil if all saves succeeded.
+func (pm PaneManager) SaveAllDirty() error {
+	for _, b := range pm.DirtyBuffers() {
+		if err := b.Save(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // TabInfo returns a summary string for the status bar.
 func (pm PaneManager) TabInfo() string {
 	if len(pm.panes) <= 1 {

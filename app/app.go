@@ -79,6 +79,7 @@ type Model struct {
 	terminal terminal.Model
 	aiPanel  terminal.Model
 	overlay  Overlay
+	confirm  ConfirmDialog
 
 	// View cache — skip re-rendering unchanged panels
 	cachedSidebar  string
@@ -280,6 +281,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.waitForGitChange()
 
 	case tea.KeyPressMsg:
+		// Confirm dialog takes precedence over every other handler.
+		if m.confirm.Active() {
+			consumed, action := m.confirm.Update(msg)
+			if consumed {
+				if action != ConfirmPending {
+					return m.handleConfirmAction(action)
+				}
+				return m, nil
+			}
+		}
+
 		// Overlay intercepts all input when active
 		if m.overlay.Active() {
 			mode := m.overlay.mode
@@ -314,6 +326,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+q":
+			if paths := dirtyPaths(m.panes.DirtyBuffers()); len(paths) > 0 {
+				m.confirm.Open(ConfirmReasonQuit, paths)
+				return m, nil
+			}
 			return m, tea.Quit
 		case "f5":
 			m.overlay.OpenShortcuts()
@@ -925,6 +941,21 @@ func (m Model) View() tea.View {
 		full = strings.Join(lines, "\n")
 	}
 
+	// Confirm dialog floats above everything else.
+	if m.confirm.Active() {
+		dialogView := m.confirm.View(m.width, m.height)
+		lines := strings.Split(full, "\n")
+		dialogLines := strings.Split(dialogView, "\n")
+		insertAt := 2
+		for i, dl := range dialogLines {
+			pos := insertAt + i
+			if pos < len(lines) {
+				lines[pos] = dl
+			}
+		}
+		full = strings.Join(lines, "\n")
+	}
+
 	v.Content = full
 	return v
 }
@@ -1000,6 +1031,10 @@ func (m *Model) execCommand(name string) tea.Cmd {
 		m.panes.ClosePane()
 		m.recalcLayout()
 	case "Quit":
+		if paths := dirtyPaths(m.panes.DirtyBuffers()); len(paths) > 0 {
+			m.confirm.Open(ConfirmReasonQuit, paths)
+			return nil
+		}
 		return tea.Quit
 	case "AI: kiro-cli", "AI: claude", "AI: codex", "AI: shell (plain terminal)":
 		provider := strings.TrimPrefix(name, "AI: ")
@@ -1014,4 +1049,39 @@ func (m *Model) execCommand(name string) tea.Cmd {
 		return m.aiPanel.AddTermWithCmd(provider, m.aiCommand())
 	}
 	return nil
+}
+
+// dirtyPaths returns the file paths for a list of dirty buffers. Used to
+// populate the confirm dialog's file list.
+func dirtyPaths(bufs []*editor.Buffer) []string {
+	out := make([]string, 0, len(bufs))
+	for _, b := range bufs {
+		out = append(out, b.FilePath)
+	}
+	return out
+}
+
+// handleConfirmAction completes the action that was gated by the confirm dialog.
+// Returns updated model and any Cmd.
+func (m Model) handleConfirmAction(action ConfirmAction) (tea.Model, tea.Cmd) {
+	reason := m.confirm.Reason()
+	m.confirm.Close()
+
+	if action == ConfirmCancel {
+		return m, nil
+	}
+	if action == ConfirmSave {
+		if err := m.panes.SaveAllDirty(); err != nil {
+			// Keep the dialog closed but abort the destructive action so the
+			// user can investigate. A future iteration could surface the error.
+			return m, nil
+		}
+	}
+	// ConfirmDiscard falls through without saving.
+
+	switch reason {
+	case ConfirmReasonQuit:
+		return m, tea.Quit
+	}
+	return m, nil
 }
