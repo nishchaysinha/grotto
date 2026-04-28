@@ -8,6 +8,7 @@
 | Ctrl+B | Toggle sidebar |
 | Ctrl+` / F3 | Toggle terminal |
 | Ctrl+Shift+A / F4 | Toggle AI panel |
+| Ctrl+Shift+L | Send editor selection (or whole file) to AI panel |
 | Ctrl+P / F1 | Fuzzy file finder |
 | Ctrl+Shift+P / F2 | Command palette |
 | F5 | Show keyboard shortcuts |

@@ -373,6 +373,48 @@ func (pm PaneManager) HasSearchActive() bool {
 	return pm.panes[pm.active].search.Active()
 }
 
+// SelectionSnapshot captures the active pane's current text context for
+// features that operate on "what the user is looking at" — e.g. piping into
+// the AI panel.
+type SelectionSnapshot struct {
+	FilePath     string // absolute path of the active buffer; empty if untitled
+	Text         string // selected text, or full buffer if no active selection
+	StartLine    int    // 1-indexed start line of the text
+	EndLine      int    // 1-indexed end line of the text
+	HasSelection bool   // true if a non-empty selection was active
+}
+
+// Snapshot returns the current selection (or the whole buffer if nothing is
+// selected) for the active pane. Returns (zero, false) if no buffer is open.
+func (pm PaneManager) Snapshot() (SelectionSnapshot, bool) {
+	b := pm.Buf()
+	if b == nil {
+		return SelectionSnapshot{}, false
+	}
+	if b.Selection.Active {
+		s, e := b.selectionRange()
+		text := b.SelectedText()
+		if text != "" {
+			return SelectionSnapshot{
+				FilePath:     b.FilePath,
+				Text:         text,
+				StartLine:    s.Line + 1,
+				EndLine:      e.Line + 1,
+				HasSelection: true,
+			}, true
+		}
+	}
+	// No active selection → return whole file.
+	full := strings.Join(b.Lines, "\n")
+	return SelectionSnapshot{
+		FilePath:     b.FilePath,
+		Text:         full,
+		StartLine:    1,
+		EndLine:      b.LineCount(),
+		HasSelection: false,
+	}, true
+}
+
 // TabInfo returns a summary string for the status bar.
 func (pm PaneManager) TabInfo() string {
 	if len(pm.panes) <= 1 {
