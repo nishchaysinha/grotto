@@ -555,6 +555,7 @@ func (m *Model) indentSelection(dir int) {
 		}
 	}
 	t.buf.Dirty = true
+	t.buf.EditVersion++
 }
 
 func (m *Model) ensureVisible() {
