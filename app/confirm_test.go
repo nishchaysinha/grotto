@@ -268,4 +268,3 @@ func keyFromString(s string) tea.KeyPressMsg {
 	// Fallback: single rune of first char.
 	return tea.KeyPressMsg{Code: rune(s[0]), Text: s[:1]}
 }
-

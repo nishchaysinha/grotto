@@ -36,7 +36,7 @@ type ConfirmDialog struct {
 	files  []string // display names of dirty files
 }
 
-func (d *ConfirmDialog) Active() bool      { return d.active }
+func (d *ConfirmDialog) Active() bool          { return d.active }
 func (d *ConfirmDialog) Reason() ConfirmReason { return d.reason }
 
 // Open shows the dialog with the list of dirty file paths.
